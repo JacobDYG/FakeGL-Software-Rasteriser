@@ -1,0 +1,2 @@
+# COMP5812M Assignment 1 - FakeGL
+A software implementation of some OpenGL fixed-function calls, created for the module COMP5812M during my study of MSc High-Performance Graphics and Games Engineering at the University of Leeds.
