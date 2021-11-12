@@ -24,8 +24,9 @@
 //-------------------------------------------------//
 
 // constructor
-FakeGL::FakeGL()
+FakeGL::FakeGL() : depthVal(0.0f, 0.0f, 0.0f, 255.0f), clearColorVal(0.0f, 0.0f, 0.0f, 0.0f)
     { // constructor
+    
     } // constructor
 
 // destructor
@@ -210,11 +211,36 @@ void FakeGL::TexImage2D(const RGBAImage &textureImage)
 // clears the frame buffer
 void FakeGL::Clear(unsigned int mask)
     { // Clear()
+      // Check mask, indicating if colour and/or depth buffer should be cleared
+    if (mask & FAKEGL_COLOR_BUFFER_BIT)
+    {
+        // Set all pixels to previously set color value
+        for (size_t row = 0; row < frameBuffer.height; row++)
+        {
+            for (size_t col = 0; col < frameBuffer.width; col++)
+            {
+                frameBuffer[row][col] = clearColorVal;
+            }
+        }
+    }
+    if (mask & FAKEGL_DEPTH_BUFFER_BIT)
+    {
+        // Set all per pixel depth values to previously set depth value
+        for (size_t row = 0; row < frameBuffer.height; row++)
+        {
+            for (size_t col = 0; col < frameBuffer.width; col++)
+            {
+                frameBuffer[row][col] = depthVal;
+            }
+        }
+    }
     } // Clear()
 
 // sets the clear colour for the frame buffer
 void FakeGL::ClearColor(float red, float green, float blue, float alpha)
     { // ClearColor()
+    // Multiply by 255 to convert from OpenGL format (float, [0-1]) to FakeGL (float, 0-255)
+    clearColorVal = RGBAValue(red * 255, green * 255, blue * 255, alpha * 255);
     } // ClearColor()
 
 //-------------------------------------------------//
@@ -385,7 +411,7 @@ std::ostream &operator << (std::ostream &outStream, vertexWithAttributes &vertex
     std::cout << "Position:   " << vertex.position << std::endl;
     std::cout << "Colour:     " << vertex.colour << std::endl;
 
-	// you
+    // you
 
     return outStream;
     } // operator <<

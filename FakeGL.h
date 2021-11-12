@@ -148,6 +148,12 @@ class FakeGL
 
     //-----------------------------
     // FRAMEBUFFER STATE
+    //-----------------------------
+    
+    RGBAValue clearColorVal;
+    RGBAValue depthVal;
+
+    //-----------------------------
     // OUTPUT FROM FRAGMENT STAGE
     //-----------------------------
     
