@@ -24,10 +24,17 @@
 //-------------------------------------------------//
 
 // constructor
-FakeGL::FakeGL() : depthVal(0.0f, 0.0f, 0.0f, 255.0f), clearColorVal(0.0f, 0.0f, 0.0f, 0.0f)
-    { // constructor
-    
-    } // constructor
+FakeGL::FakeGL()
+// Initialisation list    
+    :
+    // Buffers
+    depthVal(0.0f, 0.0f, 0.0f, 255.0f),
+    clearColorVal(0.0f, 0.0f, 0.0f, 0.0f)
+{ // constructor
+    // Set default matrix values
+    modelViewMat.SetIdentity();
+    projectionMat.SetIdentity();
+} // constructor
 
 // destructor
 FakeGL::~FakeGL()
@@ -42,23 +49,55 @@ FakeGL::~FakeGL()
 
 // starts a sequence of geometric primitives
 void FakeGL::Begin(unsigned int PrimitiveType)
-    { // Begin()
-    } // Begin()
+{ // Begin()
+    // Check the previous sequence has been closed with FakeGL::End()
+    if (!primitiveAssembly)
+    {
+        // Check the primitive is valid
+        if (PrimitiveType == FAKEGL_POINTS || PrimitiveType == FAKEGL_LINES || PrimitiveType == FAKEGL_TRIANGLES)
+        {
+            // Primitive is valid, set it
+            primitiveMode = PrimitiveType;
+            // Indicate that a sequence of vertices is being specified
+            primitiveAssembly = true;
+        }
+        else
+        {
+            // The requested primitive mode is wrong. Set it to -1 as in (some) cases this will make it more obvious something is wrong
+            primitiveMode = -1;
+        }
+    }
+} // Begin()
 
 // ends a sequence of geometric primitives
 void FakeGL::End()
-    { // End()
-    } // End()
+{ // End()
+    // Set the primitive value to -1
+    primitiveMode = -1;
+    // Indicate that primitive specification is done
+    primitiveAssembly = false;
+    // This could potentially be used to call shader stages
+} // End()
 
 // sets the size of a point for drawing
 void FakeGL::PointSize(float size)
-    { // PointSize()
-    } // PointSize()
+{ // PointSize()
+    // Set the point size if it is larger than 0
+    if (size > 0.0)
+    {
+        pointSize = size;
+    }
+} // PointSize()
 
 // sets the width of a line for drawing purposes
 void FakeGL::LineWidth(float width)
-    { // LineWidth()
-    } // LineWidth()
+{ // LineWidth()
+    // Set the line width if it is larger than 0
+    if (width > 0.0)
+    {
+        lineWidth = width;
+    }
+} // LineWidth()
 
 //-------------------------------------------------//
 //                                                 //
@@ -68,28 +107,84 @@ void FakeGL::LineWidth(float width)
 
 // set the matrix mode (i.e. which one we change)   
 void FakeGL::MatrixMode(unsigned int whichMatrix)
-    { // MatrixMode()
-    } // MatrixMode()
+{ // MatrixMode()
+    // Check this is a valid matrix mode
+    if (whichMatrix == FAKEGL_MODELVIEW || whichMatrix == FAKEGL_PROJECTION)
+    {
+        // Set the matrix mode
+        matrixMode = whichMatrix;
+    }
+} // MatrixMode()
 
 // pushes a matrix on the stack
 void FakeGL::PushMatrix()
-    { // PushMatrix()
-    } // PushMatrix()
+{ // PushMatrix()
+    // Check the matrix mode to determine which to push & which stack to change
+    if (matrixMode == FAKEGL_MODELVIEW)
+    {
+        modelViewMatStack.push(modelViewMat);
+    }
+    else if (matrixMode == FAKEGL_PROJECTION)
+    {
+        projectionMatStack.push(projectionMat);
+    }
+} // PushMatrix()
 
 // pops a matrix off the stack
 void FakeGL::PopMatrix()
     { // PopMatrix()
+    // Check the matrix mode to determine which stack to pop from & into which matrix
+    if (matrixMode == FAKEGL_MODELVIEW)
+    {
+        // Read the matrix at the top of the stack, then pop it
+        modelViewMat = modelViewMatStack.top();
+        modelViewMatStack.pop();
+    }
+    else if (matrixMode == FAKEGL_PROJECTION)
+    {
+        projectionMat = projectionMatStack.top();
+        projectionMatStack.pop();
+    }
     } // PopMatrix()
 
 // load the identity matrix
 void FakeGL::LoadIdentity()
-    { // LoadIdentity()
-    } // LoadIdentity()
+{ // LoadIdentity()
+    // Check the matrix mode to determine which to modify
+    if (matrixMode == FAKEGL_MODELVIEW)
+    {
+        // Load the identity matrix
+        modelViewMat.SetIdentity();
+    }
+    else if (matrixMode == FAKEGL_PROJECTION)
+    {
+        projectionMat.SetIdentity();
+    }
+} // LoadIdentity()
 
 // multiply by a known matrix in column-major format
 void FakeGL::MultMatrixf(const float *columnMajorCoordinates)
-    { // MultMatrixf()
-    } // MultMatrixf()
+{ // MultMatrixf()
+    // Initialise a new matrix, store specified matrix as row major
+    Matrix4 rowMajor;
+    for (size_t col = 0; col < 4; col++)
+    {
+        for (size_t row = 0; row < 4; row++)
+        {
+            rowMajor.coordinates[row][col] = columnMajorCoordinates[(col * 4) + row];
+        }
+    }
+    // Check the matrix mode
+    if (matrixMode == FAKEGL_MODELVIEW)
+    {
+        // Multiply the current matrix with the new one
+        modelViewMat = modelViewMat * rowMajor;
+    }
+    else if (matrixMode == FAKEGL_PROJECTION)
+    {
+        projectionMat = projectionMat * rowMajor;
+    }
+} // MultMatrixf()
 
 // sets up a perspective projection matrix
 void FakeGL::Frustum(float left, float right, float bottom, float top, float zNear, float zFar)
@@ -118,8 +213,18 @@ void FakeGL::Translatef(float xTranslate, float yTranslate, float zTranslate)
 
 // sets the viewport
 void FakeGL::Viewport(int x, int y, int width, int height)
-    { // Viewport()
-    } // Viewport()
+{ // Viewport()
+    // OpenGL allows negative values for x and y, but not width and height
+    // I will not change anything if any value is incorrect
+    if (width > 0 && height > 0)
+    {
+        // Set viewport values
+        viewportX = x;
+        viewportY = y;
+        viewportWidth = width;
+        viewportHeight = height;
+    }
+} // Viewport()
 
 //-------------------------------------------------//
 //                                                 //
@@ -154,6 +259,23 @@ void FakeGL::TexCoord2f(float u, float v)
 // sets the vertex & launches it down the pipeline
 void FakeGL::Vertex3f(float x, float y, float z)
     { // Vertex3f()
+    //std::cout << "Recieved" << " x: " << x << " y: " << y << " z: " << z << std::endl;
+    // Declare a tempoary vertex, use for vertexWithAttributes and add to the back of the vertex queue
+    Homogeneous4 myVertex;
+    myVertex.x = x;
+    myVertex.y = y;
+    myVertex.z = z;
+    myVertex.w = 1.0f;
+
+    vertexWithAttributes myVertexWithAttributes;
+    myVertexWithAttributes.position = myVertex;
+
+    // Tempoarily set colour to red
+    myVertexWithAttributes.colour = RGBAValue(255.0f, 0.0f, 0.0f, 255.0f);
+
+    vertexQueue.push_back(myVertexWithAttributes);
+
+    FakeGL::TransformVertex();
     } // Vertex3f()
 
 //-------------------------------------------------//
@@ -252,18 +374,140 @@ void FakeGL::ClearColor(float red, float green, float blue, float alpha)
 // transform one vertex & shift to the raster queue
 void FakeGL::TransformVertex()
     { // TransformVertex()
+    // Transformation to screen space (todo....)
+    //std::cout << "Reached TransformVertex. qe" << std::endl;
+    // For now, do not transform the vertices, put them straight on the raster queue.
+    while (!vertexQueue.empty())
+    {
+        vertexWithAttributes myVertexWithAttributes = vertexQueue.back();
+        vertexQueue.pop_back();
+        // Screen vertex does not have w
+        screenVertexWithAttributes myScreenVertex;
+        myScreenVertex.position.x = myVertexWithAttributes.position.x;
+        myScreenVertex.position.y = myVertexWithAttributes.position.y;
+        myScreenVertex.position.z = myVertexWithAttributes.position.z;
+        // Pass the colour through
+        myScreenVertex.colour = myVertexWithAttributes.colour;
+
+        rasterQueue.push_back(myScreenVertex);
+    }
+
+    FakeGL::RasterisePrimitive();
     } // TransformVertex()
 
 // rasterise a single primitive if there are enough vertices on the queue
-bool FakeGL::RasterisePrimitive()
-    { // RasterisePrimitive()
-        return 0;
+    bool FakeGL::RasterisePrimitive()
+    { // RasterisePrimitive(
+        // Check the primitive
+        // Results where a primitive hasn't been set are undefined in OpenGL- I will refuse 
+        //      to rasterise anything without a primitive being set.
+        if (primitiveMode == FAKEGL_POINTS)
+        {
+            // Check the queue size
+            if (rasterQueue.size() >= 1)
+            {
+                // Primitive can be drawn, pop a vertex
+                screenVertexWithAttributes vertex = rasterQueue.front();
+                rasterQueue.pop_front();
+                // Now call the appropriate drawing function and return true
+                RasterisePoint(vertex);
+                return true;
+            }
+            else
+            {
+                // There are not enough vertices on the queue, return false
+                return false;
+            }
+        }
+        else if (primitiveMode == FAKEGL_LINES)
+        {
+            // Check the queue size
+            if (rasterQueue.size() >= 2)
+            {
+                // Primitive can be drawn, pop two vertices
+                screenVertexWithAttributes vertex0 = rasterQueue.front();
+                rasterQueue.pop_front();
+                screenVertexWithAttributes vertex1 = rasterQueue.front();
+                rasterQueue.pop_front();
+                // Now call the appropriate drawing function and return true
+                RasteriseLineSegment(vertex0, vertex1);
+                return true;
+            }
+            else
+            {
+                // There are not enough vertices on the queue, return false
+                return false;
+            }
+        }
+        else if (primitiveMode == FAKEGL_TRIANGLES)
+        {
+            // Check the queue size
+            if (rasterQueue.size() >= 3)
+            {
+                // Primitive can be drawn, pop three vertices
+                screenVertexWithAttributes vertex0 = rasterQueue.front();
+                rasterQueue.pop_front();
+                screenVertexWithAttributes vertex1 = rasterQueue.front();
+                rasterQueue.pop_front();
+                screenVertexWithAttributes vertex2 = rasterQueue.front();
+                rasterQueue.pop_front();
+                // Now call the appropriate drawing function and return true
+                RasteriseTriangle(vertex0, vertex1, vertex2);
+                return true;
+            }
+            else
+            {
+                // There are not enough vertices on the queue, return false
+                return false;
+            }
+        }
+        // Return false as a primitive was not specified
+        return false;
     } // RasterisePrimitive()
 
 // rasterises a single point
 void FakeGL::RasterisePoint(screenVertexWithAttributes &vertex0)
-    { // RasterisePoint()
-    } // RasterisePoint()
+{ // RasterisePoint()
+    // Find which pixels intersecting the point- depends on point size, default 1
+    // Convert NDC to px- do not round until the end
+    float row = viewportX + ((vertex0.position.x + 1.0) * 0.5 * viewportHeight);
+    float col = viewportY + ((vertex0.position.y + 1.0) * 0.5 * viewportWidth);
+
+    // Calculate the min and max columns from the point size. Now round to ints.
+    int rowMin = std::round(row - pointSize / 2.0);
+    int rowMax = std::round(row + pointSize / 2.0);
+    int colMin = std::round(col - pointSize / 2.0);
+    int colMax = std::round(col + pointSize / 2.0);
+
+    // Create a fragment for reuse
+    fragmentWithAttributes rasterFragment;
+    // Set the colour now, as it'll be the same for every pixel on a point
+    rasterFragment.colour = vertex0.colour;
+
+    // Colour fragments and send to fragment queue
+    for (rasterFragment.row = rowMin; rasterFragment.row < rowMax; rasterFragment.row++)
+    {
+        // Clipping in rows
+        if (rasterFragment.row < 0 || rasterFragment.row > frameBuffer.height)
+        {
+            continue;
+        }
+        // Inner loop
+        for (rasterFragment.col = colMin; rasterFragment.col < colMax; rasterFragment.col++)
+        {
+            // Clipping in columns
+            if (rasterFragment.col < 0 || rasterFragment.col > frameBuffer.width)
+            {
+                continue;
+            }
+            // No interpolation is neccasary for points, so everything is done, push the fragment to the fragment queue
+            fragmentQueue.push_back(rasterFragment);
+
+            // Might want to move this :O
+            ProcessFragment();
+        }
+    }
+} // RasterisePoint()
 
 // rasterises a single line segment
 void FakeGL::RasteriseLineSegment(screenVertexWithAttributes &vertex0, screenVertexWithAttributes &vertex1)
@@ -360,8 +604,21 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
 
 // process a single fragment
 void FakeGL::ProcessFragment()
-    { // ProcessFragment()
-    } // ProcessFragment()
+{ // ProcessFragment()
+    // Check a fragment exists, return if not
+    if (!(fragmentQueue.size() >= 1))
+    {
+        return;
+    }
+    // Get the fragment from the queue and pop it
+    fragmentWithAttributes fragment = fragmentQueue.front();
+    fragmentQueue.pop_front();
+
+    // Don't bother with depth yet
+
+    // Set the value in the framebuffer- relying on clipping from earlier
+    frameBuffer[fragment.row][fragment.col] = fragment.colour;
+} // ProcessFragment()
 
 // standard routine for dumping the entire FakeGL context (except for texture / image)
 std::ostream &operator << (std::ostream &outStream, FakeGL &fakeGL)

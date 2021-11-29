@@ -196,8 +196,14 @@ void FakeGLRenderWidget::paintFakeGL()
         // set the lines to be obvious in width
         fakeGL.LineWidth(4.0);
 
+        //TEMP
+        fakeGL.PointSize(4.0);
+
         // now draw one line for each axis in different colours
-        fakeGL.Begin(FAKEGL_LINES);
+        //fakeGL.Begin(FAKEGL_LINES);
+
+        // TEMP
+        fakeGL.Begin(FAKEGL_POINTS);
 
         // X axis is red
         fakeGL.Color3f(1.0, 0.0, 0.0);
@@ -217,6 +223,8 @@ void FakeGLRenderWidget::paintFakeGL()
         // now reset the color, just in case
         fakeGL.Color3f(1.0, 1.0, 1.0);
         fakeGL.End();
+
+        //std::cout << fakeGL;
 
         // reset lighting on if needed
         if (renderParameters->useLighting)

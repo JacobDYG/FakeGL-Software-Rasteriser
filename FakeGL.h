@@ -24,6 +24,7 @@
 #include "RGBAImage.h"
 #include <vector>
 #include <deque>
+#include <stack>
 
 // we will store all of the FakeGL context in a class object
 // this is similar to the real OpenGL which handles multiple windows
@@ -64,7 +65,7 @@ const unsigned int FAKEGL_REPLACE = 2;
 
 // class with vertex attributes
 class vertexWithAttributes
-    { // class vertexWithAttributes
+{ // class vertexWithAttributes
     public:
 	// Position in OCS
     Homogeneous4 position;
@@ -73,11 +74,11 @@ class vertexWithAttributes
 
 	// you may need to add more state here
 
-    }; // class vertexWithAttributes
+}; // class vertexWithAttributes
 
 // class for a vertex after transformation to screen space
 class screenVertexWithAttributes
-    { // class screenVertexWithAttributes
+{ // class screenVertexWithAttributes
     public:
 	// Position in DCS
     Cartesian3 position;
@@ -86,11 +87,11 @@ class screenVertexWithAttributes
 
 	// you may need to add more state here
 
-    }; // class screenVertexWithAttributes
+}; // class screenVertexWithAttributes
 
 // class for a fragment with attributes
 class fragmentWithAttributes
-    { // class fragmentWithAttributes
+{ // class fragmentWithAttributes
     public:
     // the row & column address in the framebuffer
     int row, col;
@@ -99,16 +100,25 @@ class fragmentWithAttributes
 
 	// you may need to add more state here
 
-    }; // class fragmentWithAttributes
+}; // class fragmentWithAttributes
 
 // the class storing the FakeGL context
 class FakeGL
-    { // class FakeGL
+{ // class FakeGL
     // for the sake of simplicity & clarity, we make everything public
     public:
     //-----------------------------
     // MATRIX STATE
     //-----------------------------
+    
+    // Matrix mode- initial value in OpenGL is GL_MODELVIEW
+    unsigned int matrixMode = FAKEGL_MODELVIEW;
+    // Matrix stacks
+    std::stack<Matrix4> modelViewMatStack;
+    std::stack<Matrix4> projectionMatStack;
+    // The current matrices -default to identity
+    Matrix4 modelViewMat;
+    Matrix4 projectionMat;
     
     //-----------------------------
     // ATTRIBUTE STATE
@@ -136,6 +146,18 @@ class FakeGL
     // RASTERISE STATE
     //-----------------------------
 
+    // Primitive
+    // Results where a primitive hasn't been set are undefined in OpenGL. I will refuse to rasterise
+    //      anything without a primitive being set. Default is -1 as 0/null is actually FAKEGL_POINTS
+    int primitiveMode = -1;
+    // In OpenGL, only certian calls are permitted between glBegin and glEnd, to be completely accurate,
+    //      blocking some functions (could) be implemented here, so track the state
+    bool primitiveAssembly = false;
+
+    // Primitive attributes- defaults are 1
+    float pointSize = 1.0;
+    float lineWidth = 1.0;
+
     //-----------------------------
     // OUTPUT FROM RASTER STAGE
     // INPUT TO FRAGMENT STAGE
@@ -150,8 +172,16 @@ class FakeGL
     // FRAMEBUFFER STATE
     //-----------------------------
     
+    // Values to use for clearing colour and depth buffers
     RGBAValue clearColorVal;
     RGBAValue depthVal;
+
+    // Viewport state- x, y specify the lower left corner of the viewport, and default to 0. 
+    //      Width/height are set by the window system, and have no default.
+    int viewportX = 0;
+    int viewportY = 0;
+    unsigned int viewportWidth;
+    unsigned int viewportHeight;
 
     //-----------------------------
     // OUTPUT FROM FRAGMENT STAGE
@@ -336,7 +366,7 @@ class FakeGL
     // process a single fragment
     void ProcessFragment();
     
-    }; // class FakeGL
+}; // class FakeGL
 
 // standard routine for dumping the entire FakeGL context (except for texture / image)
 std::ostream &operator << (std::ostream &outStream, FakeGL &fakeGL); 
