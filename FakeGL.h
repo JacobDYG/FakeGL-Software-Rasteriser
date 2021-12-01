@@ -141,10 +141,10 @@ class FakeGL
 
     // Light position
     Homogeneous4 lightPos;
-    // Light colour
-    RGBAValue ambientColor;
-    RGBAValue diffuseColor;
-    RGBAValue specularColor;
+    // Light colour. Using Homogenous4 so they can be stored as floats
+    Homogeneous4 ambientColor;
+    Homogeneous4 diffuseColor;
+    Homogeneous4 specularColor;
 
     //-----------------------------
     // OUTPUT FROM TRANSFORM STAGE

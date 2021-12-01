@@ -367,9 +367,30 @@ void FakeGL::Enable(unsigned int property)
 void FakeGL::Light(int parameterName, const float *parameterValues)
 { // Light()
     // Check which property to set
-    if (parameterName & FAKEGL_AMBIENT == FAKEGL_AMBIENT)
+    if ((parameterName & FAKEGL_AMBIENT_AND_DIFFUSE) == FAKEGL_AMBIENT_AND_DIFFUSE)
     {
-
+        // Set ambient and diffuse to the same
+        ambientColor = diffuseColor = Homogeneous4(parameterValues[0], parameterValues[1], parameterValues[2], parameterValues[3]);
+    }
+    else if ((parameterName & FAKEGL_AMBIENT) == FAKEGL_AMBIENT)
+    {
+        // Set ambient colour
+        ambientColor = Homogeneous4(parameterValues[0], parameterValues[1], parameterValues[2], parameterValues[3]);
+    }
+    else if ((parameterName & FAKEGL_DIFFUSE) == FAKEGL_DIFFUSE)
+    {
+        // Set diffuse colour
+        diffuseColor = Homogeneous4(parameterValues[0], parameterValues[1], parameterValues[2], parameterValues[3]);
+    }
+    else if ((parameterName & FAKEGL_SPECULAR) == FAKEGL_SPECULAR)
+    {
+        // Set specular light
+        specularColor = Homogeneous4(parameterValues[0], parameterValues[1], parameterValues[2], parameterValues[3]);
+    }
+    else if ((parameterName & FAKEGL_POSITION) == FAKEGL_POSITION)
+    {
+        // Set the light position
+        lightPos = Homogeneous4(parameterValues[0], parameterValues[1], parameterValues[2], parameterValues[3]);
     }
 } // Light()
 
@@ -442,31 +463,47 @@ void FakeGL::ClearColor(float red, float green, float blue, float alpha)
 // transform one vertex & shift to the raster queue
 void FakeGL::TransformVertex()
     { // TransformVertex()
-    // Transformation to view space (model and view matrices.... todo....)
-    // Transformation to NDCS (projection matrix and then perspective divide)
-    //std::cout << "Reached TransformVertex. qe" << std::endl;
-    // For now, do not transform the vertices, put them straight on the raster queue.
+    // Loop until the queue is empty
     while (!vertexQueue.empty())
     {
+        // Get a vertex from the queue
         vertexWithAttributes myVertexWithAttributes = vertexQueue.back();
         vertexQueue.pop_back();
-        // Apply transformations: ModelView first
+
+        // Apply transformations: ModelView first, then projection
         myVertexWithAttributes.position = modelViewMat * myVertexWithAttributes.position;
-        // Followed by projection
         myVertexWithAttributes.position = projectionMat * myVertexWithAttributes.position;
+
         // Perspective divison (by w)
         screenVertexWithAttributes myScreenVertex;
         // Convert to cartesian then divide as scalar
         Cartesian3 cartesian(myVertexWithAttributes.position.x, myVertexWithAttributes.position.y, myVertexWithAttributes.position.z);
         cartesian = cartesian / myVertexWithAttributes.position.w;
+        
         // Convert NDC to DC
         myScreenVertex.position.x = viewportX + ((cartesian.x + 1.0) * 0.5 * viewportHeight);
         myScreenVertex.position.y = viewportY + ((cartesian.y + 1.0) * 0.5 * viewportWidth);
         // Change depth to range 0-255, as our depth buffer is an 8 bit int
         // This does not prevent against values outside this range, as clipping is performed in raster
-        myScreenVertex.position.z = cartesian.z * 255.0;
-        // Pass the colour through
-        myScreenVertex.colour = myVertexWithAttributes.colour;
+        myScreenVertex.position.z = std::round(cartesian.z * 255.0);
+        
+        
+
+        // Lighting calculations (if requested)
+        if (lighting)
+        {
+            // Ambient can be applied straight away
+            myScreenVertex.colour.red = (char)((int)std::round((float)myVertexWithAttributes.colour.red * (float)ambientColor.x));
+            myScreenVertex.colour.green = (char)((int)std::round((float)myVertexWithAttributes.colour.green * (float)ambientColor.y));
+            myScreenVertex.colour.blue = (char)((int)std::round((float)myVertexWithAttributes.colour.blue * (float)ambientColor.z));
+            myScreenVertex.colour.alpha = myVertexWithAttributes.colour.alpha;
+        }
+        else
+        {
+            // Pass the colour through
+            myScreenVertex.colour = myVertexWithAttributes.colour;
+        }
+        
 
         rasterQueue.push_back(myScreenVertex);
     }
