@@ -88,6 +88,8 @@ void FakeGLRenderWidget::resizeGL(int w, int h)
     
     // resize the render image
     fakeGL.frameBuffer.Resize(w, h);
+    // resize the depth buffer
+    fakeGL.depthBuffer.Resize(w, h);
 
     // set projection matrix to be fakeGL.Ortho based on zoom & window size
     fakeGL.MatrixMode(FAKEGL_PROJECTION);
@@ -196,14 +198,8 @@ void FakeGLRenderWidget::paintFakeGL()
         // set the lines to be obvious in width
         fakeGL.LineWidth(4.0);
 
-        //TEMP
-        fakeGL.PointSize(4.0);
-
         // now draw one line for each axis in different colours
-        //fakeGL.Begin(FAKEGL_LINES);
-
-        // TEMP
-        fakeGL.Begin(FAKEGL_POINTS);
+        fakeGL.Begin(FAKEGL_LINES);
 
         // X axis is red
         fakeGL.Color3f(1.0, 0.0, 0.0);

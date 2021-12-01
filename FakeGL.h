@@ -97,8 +97,8 @@ class fragmentWithAttributes
     int row, col;
     // the RGBA colour of the fragment
     RGBAValue colour;
-
-	// you may need to add more state here
+    // the depth value of the fragment
+    RGBAValue depth;
 
 }; // class fragmentWithAttributes
 
@@ -124,6 +124,9 @@ class FakeGL
     // ATTRIBUTE STATE
     //-----------------------------
 
+    // Store the current colour as set by Color3f (defaults to white, alpha = 1, := 255 in this case)
+    RGBAValue currentColor;
+
     //-----------------------------
     // OUTPUT FROM INPUT STAGE
     // INPUT TO TRANSFORM STAGE
@@ -135,6 +138,13 @@ class FakeGL
     //-----------------------------
     // TRANSFORM/LIGHTING STATE
     //-----------------------------
+
+    // Light position
+    Homogeneous4 lightPos;
+    // Light colour
+    RGBAValue ambientColor;
+    RGBAValue diffuseColor;
+    RGBAValue specularColor;
 
     //-----------------------------
     // OUTPUT FROM TRANSFORM STAGE
@@ -150,6 +160,7 @@ class FakeGL
     // Results where a primitive hasn't been set are undefined in OpenGL. I will refuse to rasterise
     //      anything without a primitive being set. Default is -1 as 0/null is actually FAKEGL_POINTS
     int primitiveMode = -1;
+
     // In OpenGL, only certian calls are permitted between glBegin and glEnd, to be completely accurate,
     //      blocking some functions (could) be implemented here, so track the state
     bool primitiveAssembly = false;
@@ -157,6 +168,10 @@ class FakeGL
     // Primitive attributes- defaults are 1
     float pointSize = 1.0;
     float lineWidth = 1.0;
+
+    // Lighting flags
+    bool lighting = false;
+    bool phongShading = false;
 
     //-----------------------------
     // OUTPUT FROM RASTER STAGE
@@ -168,6 +183,9 @@ class FakeGL
     // TEXTURE STATE
     //-----------------------------
 
+    // Enabled/disabled flag
+    bool textures = false;
+
     //-----------------------------
     // FRAMEBUFFER STATE
     //-----------------------------
@@ -175,6 +193,8 @@ class FakeGL
     // Values to use for clearing colour and depth buffers
     RGBAValue clearColorVal;
     RGBAValue depthVal;
+    // Depth test on/off
+    bool depthTest = false;
 
     // Viewport state- x, y specify the lower left corner of the viewport, and default to 0. 
     //      Width/height are set by the window system, and have no default.

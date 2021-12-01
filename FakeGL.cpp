@@ -29,7 +29,14 @@ FakeGL::FakeGL()
     :
     // Buffers
     depthVal(0.0f, 0.0f, 0.0f, 255.0f),
-    clearColorVal(0.0f, 0.0f, 0.0f, 0.0f)
+    clearColorVal(0.0f, 0.0f, 0.0f, 0.0f),
+    // Default colour should be white
+    currentColor(255.0f, 255.0f, 255.0f, 255.0f),
+    // Lighting values
+    lightPos(0.0f, 0.0f, 0.0f, 1.0f),
+    ambientColor(1.0f, 1.0f, 1.0f, 1.0f),
+    diffuseColor(1.0f, 1.0f, 1.0f, 1.0f),
+    specularColor(1.0f, 1.0f, 1.0f, 1.0f)
 { // constructor
     // Set default matrix values
     modelViewMat.SetIdentity();
@@ -208,8 +215,17 @@ void FakeGL::Scalef(float xScale, float yScale, float zScale)
 
 // translate the matrix
 void FakeGL::Translatef(float xTranslate, float yTranslate, float zTranslate)
-    { // Translatef()
-    } // Translatef()
+{ // Translatef()
+    // Declare a new matrix and set it to the identity
+    Matrix4 translation;
+    translation.SetIdentity();
+    // Change the translation part (col 4, rows 1-3)
+    translation[0][3] = xTranslate;
+    translation[1][3] = yTranslate;
+    translation[2][3] = zTranslate;
+    // Multiply with the active matrix
+    MultMatrixf(translation.columnMajor().coordinates);
+} // Translatef()
 
 // sets the viewport
 void FakeGL::Viewport(int x, int y, int width, int height)
@@ -234,8 +250,24 @@ void FakeGL::Viewport(int x, int y, int width, int height)
 
 // sets colour with floating point
 void FakeGL::Color3f(float red, float green, float blue)
-    { // Color3f()
-    } // Color3f()
+{ // Color3f()
+    // Our colours are stored in the range 0-255, but specified as 0-1, so multiply
+    float newRed = red * 255.0, newGreen = green * 255.0, newBlue = blue * 255.0;
+    // Clip each colour
+    for (auto& colour : {&newRed, &newGreen, &newBlue})
+    {
+        if (*colour < 0.0f)
+        {
+            *colour = 0.0f;
+        }
+        else if (*colour > 255.0f)
+        {
+            *colour = 255.0f;
+        }
+    }
+    // Set the colour
+    currentColor = RGBAValue(newRed, newGreen, newBlue, 255.0f);
+} // Color3f()
 
 // sets material properties
 void FakeGL::Materialf(unsigned int parameterName, const float parameterValue)
@@ -259,7 +291,6 @@ void FakeGL::TexCoord2f(float u, float v)
 // sets the vertex & launches it down the pipeline
 void FakeGL::Vertex3f(float x, float y, float z)
     { // Vertex3f()
-    //std::cout << "Recieved" << " x: " << x << " y: " << y << " z: " << z << std::endl;
     // Declare a tempoary vertex, use for vertexWithAttributes and add to the back of the vertex queue
     Homogeneous4 myVertex;
     myVertex.x = x;
@@ -270,8 +301,8 @@ void FakeGL::Vertex3f(float x, float y, float z)
     vertexWithAttributes myVertexWithAttributes;
     myVertexWithAttributes.position = myVertex;
 
-    // Tempoarily set colour to red
-    myVertexWithAttributes.colour = RGBAValue(255.0f, 0.0f, 0.0f, 255.0f);
+    // Set to current colour
+    myVertexWithAttributes.colour = currentColor;
 
     vertexQueue.push_back(myVertexWithAttributes);
 
@@ -287,12 +318,44 @@ void FakeGL::Vertex3f(float x, float y, float z)
 // disables a specific flag in the library
 void FakeGL::Disable(unsigned int property)
     { // Disable()
+    // Check the property against the flags, and change to false if they match
+    switch (property)
+    {
+    case FAKEGL_LIGHTING:
+        lighting = false;
+        break;
+    case FAKEGL_TEXTURE_2D:
+        textures = false;
+        break;
+    case FAKEGL_DEPTH_TEST:
+        depthTest = false;
+        break;
+    case FAKEGL_PHONG_SHADING:
+        phongShading = false;
+        break;
+    }
     } // Disable()
 
 // enables a specific flag in the library
 void FakeGL::Enable(unsigned int property)
-    { // Enable()
-    } // Enable()
+{ // Enable()
+    // Check the property against the flags, and change to true if they match
+    switch (property)
+    {
+    case FAKEGL_LIGHTING:
+        lighting = true;
+        break;
+    case FAKEGL_TEXTURE_2D:
+        textures = true;
+        break;
+    case FAKEGL_DEPTH_TEST:
+        depthTest = true;
+        break;
+    case FAKEGL_PHONG_SHADING:
+        phongShading = true;
+        break;
+    }
+} // Enable()
 
 //-------------------------------------------------//
 //                                                 //
@@ -302,8 +365,13 @@ void FakeGL::Enable(unsigned int property)
 
 // sets properties for the one and only light
 void FakeGL::Light(int parameterName, const float *parameterValues)
-    { // Light()
-    } // Light()
+{ // Light()
+    // Check which property to set
+    if (parameterName & FAKEGL_AMBIENT == FAKEGL_AMBIENT)
+    {
+
+    }
+} // Light()
 
 //-------------------------------------------------//
 //                                                 //
@@ -352,7 +420,7 @@ void FakeGL::Clear(unsigned int mask)
         {
             for (size_t col = 0; col < frameBuffer.width; col++)
             {
-                frameBuffer[row][col] = depthVal;
+                depthBuffer[row][col] = depthVal;
             }
         }
     }
@@ -374,18 +442,29 @@ void FakeGL::ClearColor(float red, float green, float blue, float alpha)
 // transform one vertex & shift to the raster queue
 void FakeGL::TransformVertex()
     { // TransformVertex()
-    // Transformation to screen space (todo....)
+    // Transformation to view space (model and view matrices.... todo....)
+    // Transformation to NDCS (projection matrix and then perspective divide)
     //std::cout << "Reached TransformVertex. qe" << std::endl;
     // For now, do not transform the vertices, put them straight on the raster queue.
     while (!vertexQueue.empty())
     {
         vertexWithAttributes myVertexWithAttributes = vertexQueue.back();
         vertexQueue.pop_back();
-        // Screen vertex does not have w
+        // Apply transformations: ModelView first
+        myVertexWithAttributes.position = modelViewMat * myVertexWithAttributes.position;
+        // Followed by projection
+        myVertexWithAttributes.position = projectionMat * myVertexWithAttributes.position;
+        // Perspective divison (by w)
         screenVertexWithAttributes myScreenVertex;
-        myScreenVertex.position.x = myVertexWithAttributes.position.x;
-        myScreenVertex.position.y = myVertexWithAttributes.position.y;
-        myScreenVertex.position.z = myVertexWithAttributes.position.z;
+        // Convert to cartesian then divide as scalar
+        Cartesian3 cartesian(myVertexWithAttributes.position.x, myVertexWithAttributes.position.y, myVertexWithAttributes.position.z);
+        cartesian = cartesian / myVertexWithAttributes.position.w;
+        // Convert NDC to DC
+        myScreenVertex.position.x = viewportX + ((cartesian.x + 1.0) * 0.5 * viewportHeight);
+        myScreenVertex.position.y = viewportY + ((cartesian.y + 1.0) * 0.5 * viewportWidth);
+        // Change depth to range 0-255, as our depth buffer is an 8 bit int
+        // This does not prevent against values outside this range, as clipping is performed in raster
+        myScreenVertex.position.z = cartesian.z * 255.0;
         // Pass the colour through
         myScreenVertex.colour = myVertexWithAttributes.colour;
 
@@ -396,93 +475,91 @@ void FakeGL::TransformVertex()
     } // TransformVertex()
 
 // rasterise a single primitive if there are enough vertices on the queue
-    bool FakeGL::RasterisePrimitive()
-    { // RasterisePrimitive(
-        // Check the primitive
-        // Results where a primitive hasn't been set are undefined in OpenGL- I will refuse 
-        //      to rasterise anything without a primitive being set.
-        if (primitiveMode == FAKEGL_POINTS)
+bool FakeGL::RasterisePrimitive()
+{ // RasterisePrimitive(
+    // Check the primitive
+    // Results where a primitive hasn't been set are undefined in OpenGL- I will refuse 
+    //      to rasterise anything without a primitive being set.
+    if (primitiveMode == FAKEGL_POINTS)
+    {
+        // Check the queue size
+        if (rasterQueue.size() >= 1)
         {
-            // Check the queue size
-            if (rasterQueue.size() >= 1)
-            {
-                // Primitive can be drawn, pop a vertex
-                screenVertexWithAttributes vertex = rasterQueue.front();
-                rasterQueue.pop_front();
-                // Now call the appropriate drawing function and return true
-                RasterisePoint(vertex);
-                return true;
-            }
-            else
-            {
-                // There are not enough vertices on the queue, return false
-                return false;
-            }
+            // Primitive can be drawn, pop a vertex
+            screenVertexWithAttributes vertex = rasterQueue.front();
+            rasterQueue.pop_front();
+            // Now call the appropriate drawing function and return true
+            RasterisePoint(vertex);
+            return true;
         }
-        else if (primitiveMode == FAKEGL_LINES)
+        else
         {
-            // Check the queue size
-            if (rasterQueue.size() >= 2)
-            {
-                // Primitive can be drawn, pop two vertices
-                screenVertexWithAttributes vertex0 = rasterQueue.front();
-                rasterQueue.pop_front();
-                screenVertexWithAttributes vertex1 = rasterQueue.front();
-                rasterQueue.pop_front();
-                // Now call the appropriate drawing function and return true
-                RasteriseLineSegment(vertex0, vertex1);
-                return true;
-            }
-            else
-            {
-                // There are not enough vertices on the queue, return false
-                return false;
-            }
+            // There are not enough vertices on the queue, return false
+            return false;
         }
-        else if (primitiveMode == FAKEGL_TRIANGLES)
+    }
+    else if (primitiveMode == FAKEGL_LINES)
+    {
+        // Check the queue size
+        if (rasterQueue.size() >= 2)
         {
-            // Check the queue size
-            if (rasterQueue.size() >= 3)
-            {
-                // Primitive can be drawn, pop three vertices
-                screenVertexWithAttributes vertex0 = rasterQueue.front();
-                rasterQueue.pop_front();
-                screenVertexWithAttributes vertex1 = rasterQueue.front();
-                rasterQueue.pop_front();
-                screenVertexWithAttributes vertex2 = rasterQueue.front();
-                rasterQueue.pop_front();
-                // Now call the appropriate drawing function and return true
-                RasteriseTriangle(vertex0, vertex1, vertex2);
-                return true;
-            }
-            else
-            {
-                // There are not enough vertices on the queue, return false
-                return false;
-            }
+            // Primitive can be drawn, pop two vertices
+            screenVertexWithAttributes vertex0 = rasterQueue.front();
+            rasterQueue.pop_front();
+            screenVertexWithAttributes vertex1 = rasterQueue.front();
+            rasterQueue.pop_front();
+            // Now call the appropriate drawing function and return true
+            RasteriseLineSegment(vertex0, vertex1);
+            return true;
         }
-        // Return false as a primitive was not specified
-        return false;
-    } // RasterisePrimitive()
+        else
+        {
+            // There are not enough vertices on the queue, return false
+            return false;
+        }
+    }
+    else if (primitiveMode == FAKEGL_TRIANGLES)
+    {
+        // Check the queue size
+        if (rasterQueue.size() >= 3)
+        {
+            // Primitive can be drawn, pop three vertices
+            screenVertexWithAttributes vertex0 = rasterQueue.front();
+            rasterQueue.pop_front();
+            screenVertexWithAttributes vertex1 = rasterQueue.front();
+            rasterQueue.pop_front();
+            screenVertexWithAttributes vertex2 = rasterQueue.front();
+            rasterQueue.pop_front();
+            // Now call the appropriate drawing function and return true
+            RasteriseTriangle(vertex0, vertex1, vertex2);
+            return true;
+        }
+        else
+        {
+            // There are not enough vertices on the queue, return false
+            return false;
+        }
+    }
+    // Return false as a primitive was not specified
+    return false;
+} // RasterisePrimitive()
 
 // rasterises a single point
 void FakeGL::RasterisePoint(screenVertexWithAttributes &vertex0)
 { // RasterisePoint()
     // Find which pixels intersecting the point- depends on point size, default 1
-    // Convert NDC to px- do not round until the end
-    float row = viewportX + ((vertex0.position.x + 1.0) * 0.5 * viewportHeight);
-    float col = viewportY + ((vertex0.position.y + 1.0) * 0.5 * viewportWidth);
-
-    // Calculate the min and max columns from the point size. Now round to ints.
-    int rowMin = std::round(row - pointSize / 2.0);
-    int rowMax = std::round(row + pointSize / 2.0);
-    int colMin = std::round(col - pointSize / 2.0);
-    int colMax = std::round(col + pointSize / 2.0);
+    // Calculate the min and max columns from the point size. Round to ints.
+    int rowMin = std::round(vertex0.position.y - pointSize / 2.0);
+    int rowMax = std::round(vertex0.position.y + pointSize / 2.0);
+    int colMin = std::round(vertex0.position.x - pointSize / 2.0);
+    int colMax = std::round(vertex0.position.x + pointSize / 2.0);
 
     // Create a fragment for reuse
     fragmentWithAttributes rasterFragment;
     // Set the colour now, as it'll be the same for every pixel on a point
     rasterFragment.colour = vertex0.colour;
+    // Depth
+    RGBAValue depth(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Colour fragments and send to fragment queue
     for (rasterFragment.row = rowMin; rasterFragment.row < rowMax; rasterFragment.row++)
@@ -502,6 +579,16 @@ void FakeGL::RasterisePoint(screenVertexWithAttributes &vertex0)
             }
             // No interpolation is neccasary for points, so everything is done, push the fragment to the fragment queue
             fragmentQueue.push_back(rasterFragment);
+            // Store depth in alpha, clipping first
+            if (vertex0.position.z < 0.0 || vertex0.position.z > 255.0)
+            {
+                depth.alpha = 255.0;
+            }
+            else
+            {
+                depth.alpha = vertex0.position.z;
+            }
+            depthBuffer[rasterFragment.row][rasterFragment.col] = depth;
 
             // Might want to move this :O
             ProcessFragment();
@@ -511,8 +598,25 @@ void FakeGL::RasterisePoint(screenVertexWithAttributes &vertex0)
 
 // rasterises a single line segment
 void FakeGL::RasteriseLineSegment(screenVertexWithAttributes &vertex0, screenVertexWithAttributes &vertex1)
-    { // RasteriseLineSegment()
-    } // RasteriseLineSegment()
+{ // RasteriseLineSegment()
+    // Draw as quads
+    // Get vector and unit normal
+    Cartesian3 vec = vertex1.position - vertex0.position;
+    Cartesian3 normal = vec;
+    normal.x = -vec.y;
+    normal.y = vec.x;
+    normal = normal.unit();
+    // Rasterise quad as two triangles
+    // Generate new vertices
+    screenVertexWithAttributes q0 = vertex0, q1 = vertex0, p0 = vertex1, p1 = vertex1;
+    q0.position = vertex0.position - ((lineWidth / 2) * normal);
+    q1.position = vertex0.position + ((lineWidth / 2) * normal);
+    p0.position = vertex1.position - ((lineWidth / 2) * normal);
+    p1.position = vertex1.position + ((lineWidth / 2) * normal);
+    // Rasterise as two triangles
+    RasteriseTriangle(q0, p0, p1);
+    RasteriseTriangle(p1, q1, q0);
+} // RasteriseLineSegment()
 
 // rasterises a single triangle
 void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertexWithAttributes &vertex1, screenVertexWithAttributes &vertex2)
@@ -567,6 +671,8 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
 
     // create a fragment for reuse
     fragmentWithAttributes rasterFragment;
+    // depth value for reuse
+    RGBAValue depth(0.0f, 0.0f, 0.0f, 255.0f);
 
     // loop through the pixels in the bounding box
     for (rasterFragment.row = minY; rasterFragment.row <= maxY; rasterFragment.row++)
@@ -595,9 +701,15 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
 
             // compute colour
             rasterFragment.colour = alpha * vertex0.colour + beta * vertex1.colour + gamma * vertex2.colour; 
+            // compute depth
+            depth.alpha = alpha * vertex0.position.z + beta * vertex1.position.z + gamma * vertex2.position.z;
+            rasterFragment.depth = depth;
 
             // now we add it to the queue for fragment processing
             fragmentQueue.push_back(rasterFragment);
+
+            // delet this
+            ProcessFragment();
             } // per pixel
         } // per row
     } // RasteriseTriangle()
@@ -614,10 +726,31 @@ void FakeGL::ProcessFragment()
     fragmentWithAttributes fragment = fragmentQueue.front();
     fragmentQueue.pop_front();
 
-    // Don't bother with depth yet
-
-    // Set the value in the framebuffer- relying on clipping from earlier
-    frameBuffer[fragment.row][fragment.col] = fragment.colour;
+    // Depth testing ( if enabled )
+    if (depthTest)
+    {
+        // Check if this fragment is in front
+        if (depthBuffer[fragment.row][fragment.col].alpha > fragment.depth.alpha)
+        {
+            // This fragment is in front, update depth buffer and set in framebuffer
+            depthBuffer[fragment.row][fragment.col].alpha = fragment.depth.alpha;
+            // Set the value in the framebuffer- relying on clipping from earlier
+            frameBuffer[fragment.row][fragment.col] = fragment.colour;
+        }
+    }
+    else
+    {
+        // Set the value in the framebuffer- relying on clipping from earlier
+        frameBuffer[fragment.row][fragment.col] = fragment.colour;
+    }
+    // Check if this fragment is in front
+    if (depthBuffer[fragment.row][fragment.col].alpha > fragment.depth.alpha)
+    {
+        // This fragment is in front, update depth buffer and set in framebuffer
+        depthBuffer[fragment.row][fragment.col].alpha = fragment.depth.alpha;
+        // Set the value in the framebuffer- relying on clipping from earlier
+        frameBuffer[fragment.row][fragment.col] = fragment.colour;
+    }
 } // ProcessFragment()
 
 // standard routine for dumping the entire FakeGL context (except for texture / image)
