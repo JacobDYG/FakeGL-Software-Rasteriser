@@ -28,7 +28,7 @@ FakeGL::FakeGL()
 // Initialisation list    
     :
     // Buffers
-    depthVal(0.0f, 0.0f, 0.0f, 255.0f),
+    depthVal(0.0f, 0.0f, 0.0f, 0.0f),
     clearColorVal(0.0f, 0.0f, 0.0f, 0.0f),
     // Default colour should be white
     currentColor(255.0f, 255.0f, 255.0f, 255.0f),
@@ -485,9 +485,7 @@ void FakeGL::TransformVertex()
         myScreenVertex.position.y = viewportY + ((cartesian.y + 1.0) * 0.5 * viewportWidth);
         // Change depth to range 0-255, as our depth buffer is an 8 bit int
         // This does not prevent against values outside this range, as clipping is performed in raster
-        myScreenVertex.position.z = std::round(cartesian.z * 255.0);
-        
-        
+        myScreenVertex.position.z = std::round(((cartesian.z - zFar) / (zNear - zFar)) * 255.0);
 
         // Lighting calculations (if requested)
         if (lighting)
@@ -708,8 +706,6 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
 
     // create a fragment for reuse
     fragmentWithAttributes rasterFragment;
-    // depth value for reuse
-    RGBAValue depth(0.0f, 0.0f, 0.0f, 255.0f);
 
     // loop through the pixels in the bounding box
     for (rasterFragment.row = minY; rasterFragment.row <= maxY; rasterFragment.row++)
@@ -739,8 +735,16 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
             // compute colour
             rasterFragment.colour = alpha * vertex0.colour + beta * vertex1.colour + gamma * vertex2.colour; 
             // compute depth
-            depth.alpha = alpha * vertex0.position.z + beta * vertex1.position.z + gamma * vertex2.position.z;
-            rasterFragment.depth = depth;
+            float depth = alpha * vertex0.position.z + beta * vertex1.position.z + gamma * vertex2.position.z;
+            if (depth > 255.0)
+            {
+                depth = 255.0;
+            }
+            else if (depth < 0.0)
+            {
+                depth = 0.0;
+            }
+            rasterFragment.depth.alpha = (char)std::round(depth);
 
             // now we add it to the queue for fragment processing
             fragmentQueue.push_back(rasterFragment);
@@ -767,7 +771,7 @@ void FakeGL::ProcessFragment()
     if (depthTest)
     {
         // Check if this fragment is in front
-        if (depthBuffer[fragment.row][fragment.col].alpha > fragment.depth.alpha)
+        if (depthBuffer[fragment.row][fragment.col].alpha < fragment.depth.alpha)
         {
             // This fragment is in front, update depth buffer and set in framebuffer
             depthBuffer[fragment.row][fragment.col].alpha = fragment.depth.alpha;
@@ -781,7 +785,7 @@ void FakeGL::ProcessFragment()
         frameBuffer[fragment.row][fragment.col] = fragment.colour;
     }
     // Check if this fragment is in front
-    if (depthBuffer[fragment.row][fragment.col].alpha > fragment.depth.alpha)
+    if (depthBuffer[fragment.row][fragment.col].alpha < fragment.depth.alpha)
     {
         // This fragment is in front, update depth buffer and set in framebuffer
         depthBuffer[fragment.row][fragment.col].alpha = fragment.depth.alpha;
