@@ -32,11 +32,21 @@ FakeGL::FakeGL()
     clearColorVal(0.0f, 0.0f, 0.0f, 0.0f),
     // Default colour should be white
     currentColor(255.0f, 255.0f, 255.0f, 255.0f),
+    // Initialise current normal to something safe
+    currentNormal(0.0f, 0.0f, 0.0f, 1.0f),
     // Lighting values
     lightPos(0.0f, 0.0f, 0.0f, 1.0f),
     ambientColor(1.0f, 1.0f, 1.0f, 1.0f),
     diffuseColor(1.0f, 1.0f, 1.0f, 1.0f),
-    specularColor(1.0f, 1.0f, 1.0f, 1.0f)
+    specularColor(1.0f, 1.0f, 1.0f, 1.0f),
+    // Default material properties, from OpenGL spec
+    // Reflectance
+    currentAmbientReflectance(0.2f, 0.2f, 0.2f, 1.0f),
+    currentDiffuseReflectance(0.8f, 0.8f, 0.8f, 1.0f),
+    currentSpecularReflectance(0.0f, 0.0f, 0.0f, 1.0f),
+    // Additives
+    currentEmission(0.0f, 0.0f, 0.0f, 1.0f),
+    currentShininess(0.0f)
 { // constructor
     // Set default matrix values
     modelViewMat.SetIdentity();
@@ -271,40 +281,92 @@ void FakeGL::Color3f(float red, float green, float blue)
 
 // sets material properties
 void FakeGL::Materialf(unsigned int parameterName, const float parameterValue)
-    { // Materialf()
-    } // Materialf()
+{ // Materialf()
+    // As OpenGL spec, this may only update the shininess component
+    if (parameterName == FAKEGL_SHININESS)
+    {
+        // Also clamp as per spec
+        if (parameterValue >= 0.0f && parameterValue <= 128.0f)
+        {
+            currentShininess = parameterValue;
+        }
+        // OpenGL spec implies putting a wrong value spits out an error and nothing else, so I will do nothing else
+    }
+} // Materialf()
 
 void FakeGL::Materialfv(unsigned int parameterName, const float *parameterValues)
-    { // Materialfv()
-    } // Materialfv()
+{ // Materialfv()
+    // Check the requested param
+    switch (parameterName)
+    {
+        // Set the appropriate property
+    case FAKEGL_AMBIENT:
+        currentAmbientReflectance = Homogeneous4(parameterValues[0], parameterValues[1], parameterValues[2], parameterValues[3]);
+        break;
+    case FAKEGL_DIFFUSE:
+        currentDiffuseReflectance = Homogeneous4(parameterValues[0], parameterValues[1], parameterValues[2], parameterValues[3]);
+        break;
+    case FAKEGL_AMBIENT_AND_DIFFUSE:
+        // Equivalent to calling this function twice
+        Materialfv(FAKEGL_AMBIENT, parameterValues);
+        Materialfv(FAKEGL_DIFFUSE, parameterValues);
+        break;
+    case FAKEGL_SPECULAR:
+        currentSpecularReflectance = Homogeneous4(parameterValues[0], parameterValues[1], parameterValues[2], parameterValues[3]);
+        break;
+    case FAKEGL_EMISSION:
+        currentEmission = Homogeneous4(parameterValues[0], parameterValues[1], parameterValues[2], parameterValues[3]);
+        break;
+    case FAKEGL_SHININESS:
+        // Call the other material function, it does the same
+        Materialf(FAKEGL_SHININESS, *parameterValues);
+        break;
+    }
+} // Materialfv()
 
 // sets the normal vector
 void FakeGL::Normal3f(float x, float y, float z)
-    { // Normal3f()
-    } // Normal3f()
+{ // Normal3f()
+    currentNormal.x = x;
+    currentNormal.y = y;
+    currentNormal.z = z;
+    currentNormal.w = 1.0f;
+} // Normal3f()
 
 // sets the texture coordinates
 void FakeGL::TexCoord2f(float u, float v)
     { // TexCoord2f()
     } // TexCoord2f()
 
-// sets the vertex & launches it down the pipeline
+// sets the inVertex & launches it down the pipeline
 void FakeGL::Vertex3f(float x, float y, float z)
     { // Vertex3f()
-    // Declare a tempoary vertex, use for vertexWithAttributes and add to the back of the vertex queue
+    // Declare a temporary inVertex, use for vertexWithAttributes and add to the back of the inVertex queue
     Homogeneous4 myVertex;
     myVertex.x = x;
     myVertex.y = y;
     myVertex.z = z;
     myVertex.w = 1.0f;
 
-    vertexWithAttributes myVertexWithAttributes;
-    myVertexWithAttributes.position = myVertex;
+    // Use position of temporary inVertex for attributed
+    vertexWithAttributes inVertex;
+    inVertex.position = myVertex;
 
     // Set to current colour
-    myVertexWithAttributes.colour = currentColor;
+    inVertex.colour = currentColor;
 
-    vertexQueue.push_back(myVertexWithAttributes);
+    // Set to current normals
+    inVertex.normal = currentNormal;
+
+    // Set the material properties
+    inVertex.ambientReflectance = currentAmbientReflectance;
+    inVertex.diffuseReflectance = currentDiffuseReflectance;
+    inVertex.specularReflectance = currentSpecularReflectance;
+    inVertex.emission = currentEmission;
+    inVertex.shininess = currentShininess;
+
+    // Push to the queue, and for the moment, call the next pipeline stage
+    vertexQueue.push_back(inVertex);
 
     FakeGL::TransformVertex();
     } // Vertex3f()
@@ -390,7 +452,9 @@ void FakeGL::Light(int parameterName, const float *parameterValues)
     else if ((parameterName & FAKEGL_POSITION) == FAKEGL_POSITION)
     {
         // Set the light position
-        lightPos = Homogeneous4(parameterValues[0], parameterValues[1], parameterValues[2], parameterValues[3]);
+        Homogeneous4 lightPosTemp(parameterValues[0], parameterValues[1], parameterValues[2], parameterValues[3]);
+        // Multiply by the current marix and set pos
+        lightPos = modelViewMat * lightPosTemp;
     }
 } // Light()
 
@@ -460,48 +524,96 @@ void FakeGL::ClearColor(float red, float green, float blue, float alpha)
 //                                                 //
 //-------------------------------------------------//
 
-// transform one vertex & shift to the raster queue
+// transform one inVertex & shift to the raster queue
 void FakeGL::TransformVertex()
     { // TransformVertex()
     // Loop until the queue is empty
     while (!vertexQueue.empty())
     {
-        // Get a vertex from the queue
-        vertexWithAttributes myVertexWithAttributes = vertexQueue.back();
+        // Get a inVertex from the queue
+        vertexWithAttributes inVertex = vertexQueue.back();
         vertexQueue.pop_back();
 
         // Apply transformations: ModelView first, then projection
-        myVertexWithAttributes.position = modelViewMat * myVertexWithAttributes.position;
-        myVertexWithAttributes.position = projectionMat * myVertexWithAttributes.position;
+        inVertex.position = modelViewMat * inVertex.position;
+        inVertex.position = projectionMat * inVertex.position;
+        // Transform normals
+        inVertex.normal = modelViewMat * inVertex.normal;
+        inVertex.normal = projectionMat * inVertex.normal;
 
         // Perspective divison (by w)
         screenVertexWithAttributes myScreenVertex;
         // Convert to cartesian then divide as scalar
-        Cartesian3 cartesian(myVertexWithAttributes.position.x, myVertexWithAttributes.position.y, myVertexWithAttributes.position.z);
-        cartesian = cartesian / myVertexWithAttributes.position.w;
-        
+        Cartesian3 cartesian(inVertex.position.x, inVertex.position.y, inVertex.position.z);
+        cartesian = cartesian / inVertex.position.w;
+
+        // Lighting calculations (if requested)
+        if (lighting)
+        {
+            // Tempoary Homogenous4 for light floats
+            Homogeneous4 light(0.0f, 0.0f, 0.0f, 0.0f);
+            // Ambient can be applied straight away
+            light = Homogeneous4(ambientColor.x * inVertex.ambientReflectance.x, ambientColor.y * inVertex.ambientReflectance.y, ambientColor.z * inVertex.ambientReflectance.z, 0.0f);
+            
+            // Diffuse based on light pos (incidence angle)
+            Cartesian3 lightDirection = lightPos.Vector();
+            Cartesian3 surfaceNormal = inVertex.normal.Vector().unit();
+            // Set diffuse amount based on incidence angle
+            float diffuseAmount = surfaceNormal.dot(lightDirection);
+            if (diffuseAmount > 0.0f)
+            {
+                light = light + (Homogeneous4(diffuseColor.x * inVertex.diffuseReflectance.x, diffuseColor.y * inVertex.diffuseReflectance.y, diffuseColor.z * inVertex.diffuseReflectance.z, diffuseColor.w * inVertex.diffuseReflectance.w) * diffuseAmount);
+            }
+            
+            // Set specular based on incidence angle, viewing angle and shininess exponent
+            // 'Camera' is at 0,0,0
+            Cartesian3 eyeVec = Cartesian3(0.0f, 0.0f, 0.0f);
+            //Cartesian3 specularLightDirection = (lightPos.Vector() - inVertex.position.Vector()).unit();
+            Cartesian3 bisector = ((eyeVec + lightDirection) / 2.0f).unit();
+            // Calculate specular
+            // Check if the dot product is negative before raising to exponent, to avoid negatives becoming positives
+            float dotProduct = surfaceNormal.dot(bisector);
+            if (dotProduct < 0.0f)
+            {
+                dotProduct = 0.0f;
+            }
+            float specularAmount = pow(dotProduct, inVertex.shininess);
+            // If there is any specular, add it to the light
+            if (specularAmount > 0.0f)
+            {
+                light = light + (Homogeneous4(specularColor.x * inVertex.specularReflectance.x, specularColor.y * inVertex.specularReflectance.y, specularColor.z * inVertex.specularReflectance.z, 0.0f) * specularAmount);
+            }
+            
+            // Add emission
+            light = light + inVertex.emission;
+
+            // Clip values
+            for (auto& component : { &light.x, &light.y, &light.z, &light.w })
+            {
+                if (*component > 1.0f)
+                {
+                    *component = 1.0f;
+                }
+                else if (*component < 0.0f)
+                {
+                    *component = 0.0f;
+                }
+            }
+
+            // Convert to colour
+            myScreenVertex.colour = RGBAValue(255.0f * light.x, 255.0f * light.y, 255.0f * light.z, 255.0f * light.w);
+        }
+        else
+        {
+            // Pass the colour through
+            myScreenVertex.colour = inVertex.colour;
+        }
         // Convert NDC to DC
         myScreenVertex.position.x = viewportX + ((cartesian.x + 1.0) * 0.5 * viewportHeight);
         myScreenVertex.position.y = viewportY + ((cartesian.y + 1.0) * 0.5 * viewportWidth);
         // Change depth to range 0-255, as our depth buffer is an 8 bit int
         // This does not prevent against values outside this range, as clipping is performed in raster
         myScreenVertex.position.z = std::round(((cartesian.z - zFar) / (zNear - zFar)) * 255.0);
-
-        // Lighting calculations (if requested)
-        if (lighting)
-        {
-            // Ambient can be applied straight away
-            myScreenVertex.colour.red = (char)((int)std::round((float)myVertexWithAttributes.colour.red * (float)ambientColor.x));
-            myScreenVertex.colour.green = (char)((int)std::round((float)myVertexWithAttributes.colour.green * (float)ambientColor.y));
-            myScreenVertex.colour.blue = (char)((int)std::round((float)myVertexWithAttributes.colour.blue * (float)ambientColor.z));
-            myScreenVertex.colour.alpha = myVertexWithAttributes.colour.alpha;
-        }
-        else
-        {
-            // Pass the colour through
-            myScreenVertex.colour = myVertexWithAttributes.colour;
-        }
-        
 
         rasterQueue.push_back(myScreenVertex);
     }
@@ -520,11 +632,11 @@ bool FakeGL::RasterisePrimitive()
         // Check the queue size
         if (rasterQueue.size() >= 1)
         {
-            // Primitive can be drawn, pop a vertex
-            screenVertexWithAttributes vertex = rasterQueue.front();
+            // Primitive can be drawn, pop a inVertex
+            screenVertexWithAttributes inVertex = rasterQueue.front();
             rasterQueue.pop_front();
             // Now call the appropriate drawing function and return true
-            RasterisePoint(vertex);
+            RasterisePoint(inVertex);
             return true;
         }
         else
@@ -692,7 +804,7 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
     float lineConstant12 = normal12.dot(vertex1.position);
     float lineConstant20 = normal20.dot(vertex2.position);
 
-    // and compute the distance of each vertex from the opposing side
+    // and compute the distance of each inVertex from the opposing side
     float distance0 = normal12.dot(vertex0.position) - lineConstant12;
     float distance1 = normal20.dot(vertex1.position) - lineConstant20;
     float distance2 = normal01.dot(vertex2.position) - lineConstant01;
@@ -706,6 +818,9 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
 
     // create a fragment for reuse
     fragmentWithAttributes rasterFragment;
+
+    // Copy colours
+    RGBAValue v0Color = vertex0.colour, v1Color = vertex1.colour, v2Color = vertex2.colour;
 
     // loop through the pixels in the bounding box
     for (rasterFragment.row = minY; rasterFragment.row <= maxY; rasterFragment.row++)
@@ -732,8 +847,9 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
             if ((alpha < 0.0) || (beta < 0.0) || (gamma < 0.0))
                 continue;
 
+            
             // compute colour
-            rasterFragment.colour = alpha * vertex0.colour + beta * vertex1.colour + gamma * vertex2.colour; 
+            rasterFragment.colour = alpha * v0Color + beta * v1Color + gamma * v2Color;
             // compute depth
             float depth = alpha * vertex0.position.z + beta * vertex1.position.z + gamma * vertex2.position.z;
             if (depth > 255.0)
@@ -805,20 +921,20 @@ std::ostream &operator << (std::ostream &outStream, FakeGL &fakeGL)
     outStream << "-------------------------" << std::endl;
     outStream << "Vertex Queue:            " << std::endl;
     outStream << "-------------------------" << std::endl;
-    for (auto vertex = fakeGL.vertexQueue.begin(); vertex < fakeGL.vertexQueue.end(); vertex++)
+    for (auto inVertex = fakeGL.vertexQueue.begin(); inVertex < fakeGL.vertexQueue.end(); inVertex++)
         { // per matrix
-        outStream << "Vertex " << vertex - fakeGL.vertexQueue.begin() << std::endl;
-        outStream << *vertex;
+        outStream << "Vertex " << inVertex - fakeGL.vertexQueue.begin() << std::endl;
+        outStream << *inVertex;
         } // per matrix
 
 
     outStream << "-------------------------" << std::endl;
     outStream << "Raster Queue:            " << std::endl;
     outStream << "-------------------------" << std::endl;
-    for (auto vertex = fakeGL.rasterQueue.begin(); vertex < fakeGL.rasterQueue.end(); vertex++)
+    for (auto inVertex = fakeGL.rasterQueue.begin(); inVertex < fakeGL.rasterQueue.end(); inVertex++)
         { // per matrix
-        outStream << "Vertex " << vertex - fakeGL.rasterQueue.begin() << std::endl;
-        outStream << *vertex;
+        outStream << "Vertex " << inVertex - fakeGL.rasterQueue.begin() << std::endl;
+        outStream << *inVertex;
         } // per matrix
 
 
@@ -836,22 +952,22 @@ std::ostream &operator << (std::ostream &outStream, FakeGL &fakeGL)
     } // operator <<
 
 // subroutines for other classes
-std::ostream &operator << (std::ostream &outStream, vertexWithAttributes &vertex)
+std::ostream &operator << (std::ostream &outStream, vertexWithAttributes &inVertex)
     { // operator <<
     std::cout << "Vertex With Attributes" << std::endl;
-    std::cout << "Position:   " << vertex.position << std::endl;
-    std::cout << "Colour:     " << vertex.colour << std::endl;
+    std::cout << "Position:   " << inVertex.position << std::endl;
+    std::cout << "Colour:     " << inVertex.colour << std::endl;
 
     // you
 
     return outStream;
     } // operator <<
 
-std::ostream &operator << (std::ostream &outStream, screenVertexWithAttributes &vertex) 
+std::ostream &operator << (std::ostream &outStream, screenVertexWithAttributes &inVertex) 
     { // operator <<
     std::cout << "Screen Vertex With Attributes" << std::endl;
-    std::cout << "Position:   " << vertex.position << std::endl;
-    std::cout << "Colour:     " << vertex.colour << std::endl;
+    std::cout << "Position:   " << inVertex.position << std::endl;
+    std::cout << "Colour:     " << inVertex.colour << std::endl;
 
     return outStream;
     } // operator <<

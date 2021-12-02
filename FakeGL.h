@@ -69,10 +69,21 @@ class vertexWithAttributes
     public:
 	// Position in OCS
     Homogeneous4 position;
-	// Colour
+	
+    // Colour
     RGBAValue colour;
-
-	// you may need to add more state here
+    
+    // Normal
+    Homogeneous4 normal;
+    
+    // Material properties
+    // Reflectance
+    Homogeneous4 ambientReflectance;
+    Homogeneous4 diffuseReflectance;
+    Homogeneous4 specularReflectance;
+    // Additives
+    Homogeneous4 emission;
+    float shininess;
 
 }; // class vertexWithAttributes
 
@@ -82,10 +93,21 @@ class screenVertexWithAttributes
     public:
 	// Position in DCS
     Cartesian3 position;
-	// Colour
+	
+    // Colour
     RGBAValue colour;
+    
+    // Normal
+    Homogeneous4 normal;
 
-	// you may need to add more state here
+    // Material properties
+    // Reflectance
+    Homogeneous4 ambientReflectance;
+    Homogeneous4 diffuseReflectance;
+    Homogeneous4 specularReflectance;
+    // Additives
+    Homogeneous4 emission;
+    float shininess;
 
 }; // class screenVertexWithAttributes
 
@@ -126,6 +148,16 @@ class FakeGL
 
     // Store the current colour as set by Color3f (defaults to white, alpha = 1, := 255 in this case)
     RGBAValue currentColor;
+    // The current normals as set by Normal3f
+    Homogeneous4 currentNormal;
+    // The current material properties, as set by Materialfv (or Materialf in case of shininess)
+    // Reflectance
+    Homogeneous4 currentAmbientReflectance;
+    Homogeneous4 currentDiffuseReflectance;
+    Homogeneous4 currentSpecularReflectance;
+    // Additives
+    Homogeneous4 currentEmission;
+    float currentShininess;
 
     //-----------------------------
     // OUTPUT FROM INPUT STAGE

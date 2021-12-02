@@ -156,6 +156,10 @@ void RenderWidget::paintGL()
         glLightfv(GL_LIGHT0, GL_DIFFUSE,    diffuseColour);
         glLightfv(GL_LIGHT0, GL_SPECULAR,   specularColour);
 
+        // Disable global ambient
+        float globalAmbientColour[4] = { 0.0f,0.0f,0.0f,1.0f };
+        glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbientColour);
+
         // notice that emission and the specular exponent belong to the material
         // not to the light. So, even though we are treating them as global, 
         // they belong in the TexturedObject render code
