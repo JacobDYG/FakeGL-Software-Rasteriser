@@ -190,8 +190,8 @@ class FakeGL
     Homogeneous4 specularColor;
 
     // Projection
-    float zNear = 1.0f;
-    float zFar = -1.0f;
+    float zNear = -1.0f;
+    float zFar = 1.0f;
 
     //-----------------------------
     // OUTPUT FROM TRANSFORM STAGE

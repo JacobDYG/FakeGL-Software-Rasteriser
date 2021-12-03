@@ -89,11 +89,18 @@ void FakeGL::Begin(unsigned int PrimitiveType)
 // ends a sequence of geometric primitives
 void FakeGL::End()
 { // End()
+    // Calling later pipeline stages
+    while (RasterisePrimitive())
+    {
+        while (fragmentQueue.size() > 0)
+        {
+            ProcessFragment();
+        }
+    }
     // Set the primitive value to -1
     primitiveMode = -1;
     // Indicate that primitive specification is done
     primitiveAssembly = false;
-    // This could potentially be used to call shader stages
 } // End()
 
 // sets the size of a point for drawing
@@ -627,7 +634,7 @@ void FakeGL::TransformVertex()
         // Transform normals
         inVertex.normal = modelViewMat * inVertex.normal;
         inVertex.normal = projectionMat * inVertex.normal;
-
+        
         // Perspective divison (by w): Convert to cartesian then divide as scalar
         Cartesian3 cartesian(inVertex.position.x, inVertex.position.y, inVertex.position.z);
         cartesian = cartesian / inVertex.position.w;
@@ -641,7 +648,8 @@ void FakeGL::TransformVertex()
             light = Homogeneous4(ambientColor.x * inVertex.ambientReflectance.x, ambientColor.y * inVertex.ambientReflectance.y, ambientColor.z * inVertex.ambientReflectance.z, 0.0f);
             
             // Diffuse based on light pos (incidence angle)
-            Cartesian3 lightDirection = lightPos.Vector();
+            Cartesian3 lightPosTmp = lightPos.Vector().unit();
+            Cartesian3 lightDirection(lightPosTmp.x, lightPosTmp.y, -lightPosTmp.z);
             Cartesian3 surfaceNormal = inVertex.normal.Vector().unit();
             // Set diffuse amount based on incidence angle
             float diffuseAmount = surfaceNormal.dot(lightDirection);
@@ -652,7 +660,7 @@ void FakeGL::TransformVertex()
             
             // Set specular based on incidence angle, viewing angle and shininess exponent
             // 'Camera' is at 0,0,0
-            Cartesian3 eyeVec = Cartesian3(0.0f, 0.0f, 0.0f);
+            Cartesian3 eyeVec = Cartesian3(0.0f, 0.0f, 0.0f) - Cartesian3(0.0f, 0.0f, 0.0f);
             //Cartesian3 specularLightDirection = (lightPos.Vector() - inVertex.position.Vector()).unit();
             Cartesian3 bisector = ((eyeVec + lightDirection) / 2.0f ).unit();
             // Calculate specular
@@ -712,8 +720,6 @@ void FakeGL::TransformVertex()
 
         rasterQueue.push_back(myScreenVertex);
     }
-
-    FakeGL::RasterisePrimitive();
 } // TransformVertex()
 
 // rasterise a single primitive if there are enough vertices on the queue
@@ -833,7 +839,7 @@ void FakeGL::RasterisePoint(screenVertexWithAttributes &vertex0)
             depthBuffer[rasterFragment.row][rasterFragment.col] = depth;
 
             // Might want to move this :O
-            ProcessFragment();
+            //ProcessFragment();
         }
     }
 } // RasterisePoint()
@@ -972,7 +978,6 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
                 // Shininess
                 float shininess = alpha * vertex0.shininess + beta * vertex1.shininess + gamma * vertex2.shininess;
                 // Normal
-                // This may need changing to a different method
                 Cartesian3 fragmentNormal = alpha * vertex0.normal.Vector().unit() + beta * vertex1.normal.Vector().unit() + gamma * vertex2.normal.Vector().unit();
                 
                 // Tempoary Homogenous4 for light floats
@@ -981,7 +986,8 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
                 light = Homogeneous4(ambientColor.x * ambientReflectanceRed, ambientColor.y * ambientReflectanceGreen, ambientColor.z * ambientReflectanceBlue, 0.0f);
 
                 // Diffuse based on light pos (incidence angle)
-                Cartesian3 lightDirection = lightPos.Vector();
+                Cartesian3 lightPosTmp = lightPos.Vector().unit();
+                Cartesian3 lightDirection(lightPosTmp.x, lightPosTmp.y, -lightPosTmp.z);
                 // Set diffuse amount based on incidence angle
                 float diffuseAmount = fragmentNormal.dot(lightDirection);
                 if (diffuseAmount > 0.0f)
@@ -1065,9 +1071,6 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
 
             // now we add it to the queue for fragment processing
             fragmentQueue.push_back(rasterFragment);
-
-            // delet this
-            ProcessFragment();
             } // per pixel
         } // per row
     } // RasteriseTriangle()
@@ -1098,14 +1101,6 @@ void FakeGL::ProcessFragment()
     }
     else
     {
-        // Set the value in the framebuffer- relying on clipping from earlier
-        frameBuffer[fragment.row][fragment.col] = fragment.colour;
-    }
-    // Check if this fragment is in front
-    if (depthBuffer[fragment.row][fragment.col].alpha < fragment.depth.alpha)
-    {
-        // This fragment is in front, update depth buffer and set in framebuffer
-        depthBuffer[fragment.row][fragment.col].alpha = fragment.depth.alpha;
         // Set the value in the framebuffer- relying on clipping from earlier
         frameBuffer[fragment.row][fragment.col] = fragment.colour;
     }
