@@ -25,7 +25,7 @@
 
 // constructor
 FakeGL::FakeGL()
-// Initialisation list    
+// Initialisation list
     :
     // Buffers
     depthVal(0.0f, 0.0f, 0.0f, 0.0f),
@@ -335,8 +335,29 @@ void FakeGL::Normal3f(float x, float y, float z)
 
 // sets the texture coordinates
 void FakeGL::TexCoord2f(float u, float v)
-    { // TexCoord2f()
-    } // TexCoord2f()
+{ // TexCoord2f()
+    // OpenGL texture behaviour can be changed, default behaviour however is to repeat
+    // As there is no way to change this, I will hardcode the default here
+    if (u > 1.0f)
+    {
+        u = u - (int)u;
+    }
+    else if (u < 0.0f)
+    {
+        u = 1.0f - (u - (int)u);
+    }
+    if (v > 1.0f)
+    {
+        v = v - (int)v;
+    }
+    else if (v < 0.0f)
+    {
+        v = 1.0f - (v - (int)v);
+    }
+    // Now set current uvs
+    currentU = u;
+    currentV = v;
+} // TexCoord2f()
 
 // sets the inVertex & launches it down the pipeline
 void FakeGL::Vertex3f(float x, float y, float z)
@@ -365,6 +386,10 @@ void FakeGL::Vertex3f(float x, float y, float z)
     inVertex.emission = currentEmission;
     inVertex.shininess = currentShininess;
 
+    // Set the texture coordinates
+    inVertex.u = currentU;
+    inVertex.v = currentV;
+
     // Push to the queue, and for the moment, call the next pipeline stage
     vertexQueue.push_back(inVertex);
 
@@ -387,7 +412,7 @@ void FakeGL::Disable(unsigned int property)
         lighting = false;
         break;
     case FAKEGL_TEXTURE_2D:
-        textures = false;
+        textureEnabled = false;
         break;
     case FAKEGL_DEPTH_TEST:
         depthTest = false;
@@ -408,7 +433,7 @@ void FakeGL::Enable(unsigned int property)
         lighting = true;
         break;
     case FAKEGL_TEXTURE_2D:
-        textures = true;
+        textureEnabled = true;
         break;
     case FAKEGL_DEPTH_TEST:
         depthTest = true;
@@ -469,13 +494,27 @@ void FakeGL::Light(int parameterName, const float *parameterValues)
 
 // sets whether textures replace or modulate
 void FakeGL::TexEnvMode(unsigned int textureMode)
-    { // TexEnvMode()
-    } // TexEnvMode()
+{ // TexEnvMode()
+    // Check the texture mode, and change the flag appropriately
+    if (textureMode == FAKEGL_REPLACE)
+    {
+        FakeGL::textureMode = FAKEGL_REPLACE;
+    }
+    else if (textureMode == FAKEGL_MODULATE)
+    {
+        FakeGL::textureMode = FAKEGL_MODULATE;
+    }
+} // TexEnvMode()
 
 // sets the texture image that corresponds to a given ID
 void FakeGL::TexImage2D(const RGBAImage &textureImage)
-    { // TexImage2D()
-    } // TexImage2D()
+{ // TexImage2D()
+    // Check the size is greater than 0 in both dimensions (avoiding divisions by 0 later)
+    if (textureImage.height > 0 && textureImage.width > 0)
+    {
+        currentTexture = &textureImage;
+    }
+} // TexImage2D()
 
 //-------------------------------------------------//
 //                                                 //
@@ -526,10 +565,13 @@ void FakeGL::ClearColor(float red, float green, float blue, float alpha)
 
 // transform one inVertex & shift to the raster queue
 void FakeGL::TransformVertex()
-    { // TransformVertex()
+{ // TransformVertex()
     // Loop until the queue is empty
     while (!vertexQueue.empty())
     {
+        // DCS vertex to use
+        screenVertexWithAttributes myScreenVertex;
+
         // Get a inVertex from the queue
         vertexWithAttributes inVertex = vertexQueue.back();
         vertexQueue.pop_back();
@@ -541,14 +583,12 @@ void FakeGL::TransformVertex()
         inVertex.normal = modelViewMat * inVertex.normal;
         inVertex.normal = projectionMat * inVertex.normal;
 
-        // Perspective divison (by w)
-        screenVertexWithAttributes myScreenVertex;
-        // Convert to cartesian then divide as scalar
+        // Perspective divison (by w): Convert to cartesian then divide as scalar
         Cartesian3 cartesian(inVertex.position.x, inVertex.position.y, inVertex.position.z);
         cartesian = cartesian / inVertex.position.w;
 
-        // Lighting calculations (if requested)
-        if (lighting)
+        // Lighting calculations (if requested). Don't waste time calculating them if phong shading.
+        if (lighting && !phongShading)
         {
             // Tempoary Homogenous4 for light floats
             Homogeneous4 light(0.0f, 0.0f, 0.0f, 0.0f);
@@ -569,7 +609,7 @@ void FakeGL::TransformVertex()
             // 'Camera' is at 0,0,0
             Cartesian3 eyeVec = Cartesian3(0.0f, 0.0f, 0.0f);
             //Cartesian3 specularLightDirection = (lightPos.Vector() - inVertex.position.Vector()).unit();
-            Cartesian3 bisector = ((eyeVec + lightDirection) / 2.0f).unit();
+            Cartesian3 bisector = ((eyeVec + lightDirection) / 2.0f ).unit();
             // Calculate specular
             // Check if the dot product is negative before raising to exponent, to avoid negatives becoming positives
             float dotProduct = surfaceNormal.dot(bisector);
@@ -615,11 +655,21 @@ void FakeGL::TransformVertex()
         // This does not prevent against values outside this range, as clipping is performed in raster
         myScreenVertex.position.z = std::round(((cartesian.z - zFar) / (zNear - zFar)) * 255.0);
 
+        // Pass through remaining attributes
+        myScreenVertex.normal = inVertex.normal;
+        myScreenVertex.ambientReflectance = inVertex.ambientReflectance;
+        myScreenVertex.diffuseReflectance = inVertex.diffuseReflectance;
+        myScreenVertex.specularReflectance = inVertex.specularReflectance;
+        myScreenVertex.emission = inVertex.emission;
+        myScreenVertex.shininess = inVertex.shininess;
+        myScreenVertex.u = inVertex.u;
+        myScreenVertex.v = inVertex.v;
+
         rasterQueue.push_back(myScreenVertex);
     }
 
     FakeGL::RasterisePrimitive();
-    } // TransformVertex()
+} // TransformVertex()
 
 // rasterise a single primitive if there are enough vertices on the queue
 bool FakeGL::RasterisePrimitive()
@@ -848,8 +898,114 @@ void FakeGL::RasteriseTriangle(screenVertexWithAttributes &vertex0, screenVertex
                 continue;
 
             
-            // compute colour
-            rasterFragment.colour = alpha * v0Color + beta * v1Color + gamma * v2Color;
+            // Compute color by specified method
+            if (!phongShading)
+            {
+                // No phong shading, lighting (if applicable) was already computed and stored in colour, so pass it through
+                rasterFragment.colour = alpha * v0Color + beta * v1Color + gamma * v2Color;
+            }
+            else if (phongShading && lighting)
+            {
+                // Phong shading- must interpolate all values
+                // Ambient Reflectance
+                float ambientReflectanceRed = alpha * vertex0.ambientReflectance.x + beta * vertex1.ambientReflectance.x + gamma * vertex2.ambientReflectance.x;
+                float ambientReflectanceGreen = alpha * vertex0.ambientReflectance.y + beta * vertex1.ambientReflectance.y + gamma * vertex2.ambientReflectance.y;
+                float ambientReflectanceBlue = alpha * vertex0.ambientReflectance.z + beta * vertex1.ambientReflectance.z + gamma * vertex2.ambientReflectance.z;
+                // Diffuse Reflectance
+                float diffuseReflectanceRed = alpha * vertex0.diffuseReflectance.x + beta * vertex1.diffuseReflectance.x + gamma * vertex2.diffuseReflectance.x;
+                float diffuseReflectanceGreen = alpha * vertex0.diffuseReflectance.y + beta * vertex1.diffuseReflectance.y + gamma * vertex2.diffuseReflectance.y;
+                float diffuseReflectanceBlue = alpha * vertex0.diffuseReflectance.z + beta * vertex1.diffuseReflectance.z + gamma * vertex2.diffuseReflectance.z;
+                float diffuseReflectanceAlpha = alpha * vertex0.diffuseReflectance.w + beta * vertex1.diffuseReflectance.w + gamma * vertex2.diffuseReflectance.w;
+                // Specular Reflectance
+                float specularReflectanceRed = alpha * vertex0.specularReflectance.x + beta * vertex1.specularReflectance.x + gamma * vertex2.specularReflectance.x;
+                float specularReflectanceGreen = alpha * vertex0.specularReflectance.y + beta * vertex1.specularReflectance.y + gamma * vertex2.specularReflectance.y;
+                float specularReflectanceBlue = alpha * vertex0.specularReflectance.z + beta * vertex1.specularReflectance.z + gamma * vertex2.specularReflectance.z;
+                // Emission
+                float emissionRed = alpha * vertex0.emission.x + beta * vertex1.emission.x + gamma * vertex2.emission.x;
+                float emissionGreen = alpha * vertex0.emission.y + beta * vertex1.emission.y + gamma * vertex2.emission.y;
+                float emissionBlue = alpha * vertex0.emission.z + beta * vertex1.emission.z + gamma * vertex2.emission.z;
+                // Shininess
+                float shininess = alpha * vertex0.shininess + beta * vertex1.shininess + gamma * vertex2.shininess;
+                // Normal
+                // This may need changing to a different method
+                Cartesian3 fragmentNormal = alpha * vertex0.normal.Vector().unit() + beta * vertex1.normal.Vector().unit() + gamma * vertex2.normal.Vector().unit();
+                
+                // Tempoary Homogenous4 for light floats
+                Homogeneous4 light(0.0f, 0.0f, 0.0f, 0.0f);
+                // Ambient can be applied straight away
+                light = Homogeneous4(ambientColor.x * ambientReflectanceRed, ambientColor.y * ambientReflectanceGreen, ambientColor.z * ambientReflectanceBlue, 0.0f);
+
+                // Diffuse based on light pos (incidence angle)
+                Cartesian3 lightDirection = lightPos.Vector();
+                // Set diffuse amount based on incidence angle
+                float diffuseAmount = fragmentNormal.dot(lightDirection);
+                if (diffuseAmount > 0.0f)
+                {
+                    light = light + (Homogeneous4(diffuseColor.x * diffuseReflectanceRed, diffuseColor.y * diffuseReflectanceGreen, diffuseColor.z * diffuseReflectanceBlue, diffuseColor.w * diffuseReflectanceAlpha) * diffuseAmount);
+                }
+
+                // Set specular based on incidence angle, viewing angle and shininess exponent
+                // 'Camera' is at 0,0,0
+                Cartesian3 eyeVec = Cartesian3(0.0f, 0.0f, 0.0f);
+                //Cartesian3 specularLightDirection = (lightPos.Vector() - inVertex.position.Vector()).unit();
+                Cartesian3 bisector = ((eyeVec + lightDirection) / 2.0f).unit();
+                // Calculate specular
+                // Check if the dot product is negative before raising to exponent, to avoid negatives becoming positives
+                float dotProduct = fragmentNormal.dot(bisector);
+                if (dotProduct < 0.0f)
+                {
+                    dotProduct = 0.0f;
+                }
+                float specularAmount = pow(dotProduct, shininess);
+                // If there is any specular, add it to the light
+                if (specularAmount > 0.0f)
+                {
+                    light = light + (Homogeneous4(specularColor.x * specularReflectanceRed, specularColor.y * specularReflectanceGreen, specularColor.z * specularReflectanceBlue, 0.0f) * specularAmount);
+                }
+
+                // Add emission
+                light = light + Homogeneous4(emissionRed, emissionGreen, emissionBlue, 0.0f);
+
+                // Clip values
+                for (auto& component : { &light.x, &light.y, &light.z, &light.w })
+                {
+                    if (*component > 1.0f)
+                    {
+                        *component = 1.0f;
+                    }
+                    else if (*component < 0.0f)
+                    {
+                        *component = 0.0f;
+                    }
+                }
+
+                // Convert to colour
+                rasterFragment.colour = RGBAValue(255.0f * light.x, 255.0f * light.y, 255.0f * light.z, 255.0f * light.w);
+            }
+            // compute textures
+            if (textureEnabled)
+            {
+                // Interpolate UVs
+                float fragU = alpha * vertex0.u + beta * vertex1.u + gamma * vertex2.u;
+                float fragV = alpha * vertex0.v + beta * vertex1.v + gamma * vertex2.v;
+                // Convert to discrete texture coords. Flip u/col as OpenGL interpolates from bottom left, while texture is stored from top left.
+                int texCol = std::round(fragU * currentTexture->width);
+                int texRow = std::round(fragV * currentTexture->height);
+                // Check interpolation mode
+                if (textureMode == FAKEGL_MODULATE)
+                {
+                    // Modulate texture: multiply by current colours to apply lighting
+                    rasterFragment.colour.red = std::round(((float)rasterFragment.colour.red / 255.0f) * (float)((*currentTexture)[texRow][texCol]).red);
+                    rasterFragment.colour.green = std::round(((float)rasterFragment.colour.green / 255.0f) * (float)((*currentTexture)[texRow][texCol]).green);
+                    rasterFragment.colour.blue = std::round(((float)rasterFragment.colour.blue / 255.0f) * (float)((*currentTexture)[texRow][texCol]).blue);
+                    rasterFragment.colour.alpha = std::round(((float)rasterFragment.colour.alpha / 255.0f) * (float)((*currentTexture)[texRow][texCol]).alpha);
+                }
+                else
+                {
+                    // Replace texture (ignore lighting)
+                    rasterFragment.colour = (*currentTexture)[texRow][texCol];
+                }
+            }
             // compute depth
             float depth = alpha * vertex0.position.z + beta * vertex1.position.z + gamma * vertex2.position.z;
             if (depth > 255.0)

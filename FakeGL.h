@@ -67,9 +67,9 @@ const unsigned int FAKEGL_REPLACE = 2;
 class vertexWithAttributes
 { // class vertexWithAttributes
     public:
-	// Position in OCS
+    // Position in OCS
     Homogeneous4 position;
-	
+    
     // Colour
     RGBAValue colour;
     
@@ -83,7 +83,11 @@ class vertexWithAttributes
     Homogeneous4 specularReflectance;
     // Additives
     Homogeneous4 emission;
-    float shininess;
+    float shininess = 0.0f;
+
+    // Texture coordinates
+    float u = 0.0f;
+    float v = 0.0f;
 
 }; // class vertexWithAttributes
 
@@ -91,9 +95,9 @@ class vertexWithAttributes
 class screenVertexWithAttributes
 { // class screenVertexWithAttributes
     public:
-	// Position in DCS
+    // Position in DCS
     Cartesian3 position;
-	
+    
     // Colour
     RGBAValue colour;
     
@@ -107,7 +111,11 @@ class screenVertexWithAttributes
     Homogeneous4 specularReflectance;
     // Additives
     Homogeneous4 emission;
-    float shininess;
+    float shininess = 0.0f;
+
+    // Texture coordinates
+    float u = 0.0f;
+    float v = 0.0f;
 
 }; // class screenVertexWithAttributes
 
@@ -158,6 +166,9 @@ class FakeGL
     // Additives
     Homogeneous4 currentEmission;
     float currentShininess;
+    //Texture coords
+    float currentU = 0.0;
+    float currentV = 0.0;
 
     //-----------------------------
     // OUTPUT FROM INPUT STAGE
@@ -220,7 +231,11 @@ class FakeGL
     //-----------------------------
 
     // Enabled/disabled flag
-    bool textures = false;
+    bool textureEnabled = false;
+    // Pointer to the current texture
+    const RGBAImage* currentTexture;
+    // Texture mode
+    int textureMode = FAKEGL_REPLACE;
 
     //-----------------------------
     // FRAMEBUFFER STATE
@@ -243,7 +258,7 @@ class FakeGL
     // OUTPUT FROM FRAGMENT STAGE
     //-----------------------------
     
-	// the frame buffer itself
+    // the frame buffer itself
     RGBAImage frameBuffer;
      
     // rather than define an extra class, we will cheat and use 
