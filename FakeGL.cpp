@@ -205,23 +205,68 @@ void FakeGL::MultMatrixf(const float *columnMajorCoordinates)
 
 // sets up a perspective projection matrix
 void FakeGL::Frustum(float left, float right, float bottom, float top, float zNear, float zFar)
-    { // Frustum()
-    } // Frustum()
+{ // Frustum()
+    // Describes a perspective matrix
+    // Applied to CURRENT matrix, though generally used for projection
+    Matrix4 frustumMat;
+    frustumMat.SetZero();
+    // Set components
+    frustumMat[0][0] = (2 * zNear) / (right - left);
+    frustumMat[1][1] = (2 * zNear) / (top - bottom);
+    frustumMat[2][0] = -(right + left) / (right - left);
+    frustumMat[2][1] = (right + left) / (right - left);
+    frustumMat[2][2] = (top + bottom) / (top - bottom);
+    frustumMat[2][3] = -1;
+    frustumMat[3][2] = -(2 * zFar * zNear) / (zFar - zNear);
+    // Multiply with current matrix
+    MultMatrixf(frustumMat.columnMajor().coordinates);
+    // Update near and far planes
+    FakeGL::zNear = zNear;
+    FakeGL::zFar = zFar;
+} // Frustum()
 
 // sets an orthographic projection matrix
 void FakeGL::Ortho(float left, float right, float bottom, float top, float zNear, float zFar)
-    { // Ortho()
-    } // Ortho()
+{ // Ortho()
+    // Describes an orthographic matrix (parallel projection)
+    // Applied to CURRENT matrix, though generally used for projection
+    Matrix4 orthoMat;
+    orthoMat.SetIdentity();
+    // Set components
+    orthoMat[0][0] = 2 / (right - left);
+    orthoMat[1][1] = 2 / (top - bottom);
+    orthoMat[2][2] = -2 / (zFar - zNear);
+    orthoMat[3][0] = -(right + left) / (right - left);
+    orthoMat[3][1] = -(top + bottom) / (top - bottom);
+    orthoMat[3][2] = -(zFar + zNear) / (zFar - zNear);
+    // Multiply with current matrix
+    MultMatrixf(orthoMat.columnMajor().coordinates);
+    // Update near and far planes
+    FakeGL::zNear = zNear;
+    FakeGL::zFar = zFar;
+} // Ortho()
 
 // rotate the matrix
 void FakeGL::Rotatef(float angle, float axisX, float axisY, float axisZ)
-    { // Rotatef()
-    } // Rotatef()
+{ // Rotatef()
+    // Produces a rotation of angle degrees around the axes x, y, z
+    // Applied to CURRENT matrix, though generally used for modelview
+    Matrix4 rotationMatrix;
+    rotationMatrix.SetRotation(Cartesian3(axisX, axisY, axisZ), angle);
+    // Multiply by the current matrix
+    MultMatrixf(rotationMatrix.columnMajor().coordinates);
+} // Rotatef()
 
 // scale the matrix
 void FakeGL::Scalef(float xScale, float yScale, float zScale)
-    { // Scalef()
-    } // Scalef()
+{ // Scalef()
+    // Scales along the x, y and z axes
+    // Applied to CURRENT matrix, though generally used for modelview
+    Matrix4 scalingMatrix;
+    scalingMatrix.SetScale(xScale, yScale, zScale);
+    // Multiply by the current matrix
+    MultMatrixf(scalingMatrix.columnMajor().coordinates);
+} // Scalef()
 
 // translate the matrix
 void FakeGL::Translatef(float xTranslate, float yTranslate, float zTranslate)
@@ -649,8 +694,8 @@ void FakeGL::TransformVertex()
             myScreenVertex.colour = inVertex.colour;
         }
         // Convert NDC to DC
-        myScreenVertex.position.x = viewportX + ((cartesian.x + 1.0) * 0.5 * viewportHeight);
-        myScreenVertex.position.y = viewportY + ((cartesian.y + 1.0) * 0.5 * viewportWidth);
+        myScreenVertex.position.x = viewportX + ((cartesian.x + 1.0) * 0.5 * viewportWidth);
+        myScreenVertex.position.y = viewportY + ((cartesian.y + 1.0) * 0.5 * viewportHeight);
         // Change depth to range 0-255, as our depth buffer is an 8 bit int
         // This does not prevent against values outside this range, as clipping is performed in raster
         myScreenVertex.position.z = std::round(((cartesian.z - zFar) / (zNear - zFar)) * 255.0);
